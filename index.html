@@ -71,9 +71,6 @@
     .back-btn:hover { color: var(--text); }
     .empty-state { text-align: center; padding: 2.5rem 1rem; color: var(--muted); font-size: 13px; }
     .error-msg { color: var(--red); font-size: 12px; margin-top: 8px; display: none; }
-    .chart-legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 10px; font-size: 12px; color: var(--muted); min-height: 18px; }
-    .legend-item { display: flex; align-items: center; gap: 5px; }
-    .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
     #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: #1a1a18; color: #fff; padding: 10px 20px; border-radius: var(--radius); font-size: 13px; transition: transform 0.3s; z-index: 1000; pointer-events: none; }
     #toast.show { transform: translateX(-50%) translateY(0); }
     .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 200; align-items: center; justify-content: center; }
@@ -197,7 +194,6 @@
     </div>
     <div class="tw"><table><thead><tr><th>Cliente</th><th>Total compras</th><th>Total pago</th><th>Situação</th><th></th></tr></thead><tbody id="clients-tb"></tbody></table></div>
   </div>
-
   <div id="cl-detail" style="display:none;">
     <button class="back-btn" onclick="backToList()">← Voltar para clientes</button>
     <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.25rem;">
@@ -298,6 +294,7 @@ function showToast(msg){const t=document.getElementById('toast');t.textContent=m
 function setLoading(show,msg='Carregando...'){const el=document.getElementById('loading-overlay');el.querySelector('span').textContent=msg;el.style.display=show?'flex':'none';}
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
+
 function showTab(t){
   document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
@@ -466,7 +463,7 @@ async function saveClient(){
 }
 async function delClient(id){
   const{bal}=cStats(id);
-  if(bal>0.01){showToast('❌ Cliente tem dívida pendente. Quite o saldo antes de excluir.');return;}
+  if(bal>0.01){showToast('❌ Cliente tem dívida. Quite o saldo antes de excluir.');return;}
   if(!confirm('Excluir este cliente?'))return;
   await db.from('purchases').delete().eq('customer_id',id);
   await db.from('payments').delete().eq('customer_id',id);
@@ -560,23 +557,22 @@ async function delPurchase(id){
   if(!confirm('Excluir esta compra?'))return;
   const{error}=await db.from('purchases').delete().eq('id',id);
   if(error){showToast('Erro ao excluir.');return;}
-  showToast('Compra excluída.');
-  await loadPurchases();renderDetail();
+  showToast('Compra excluída.');await loadPurchases();renderDetail();
 }
-  
+
 function setPeriod(p){curPeriod=p;['day','week','month'].forEach(x=>document.getElementById('pb-'+x).classList.remove('active'));document.getElementById('pb-'+p).classList.add('active');renderRel();}
 function getStart(p){const d=new Date();if(p==='day'){d.setHours(0,0,0,0);}else if(p==='week'){d.setDate(d.getDate()-6);d.setHours(0,0,0,0);}else{d.setDate(d.getDate()-29);d.setHours(0,0,0,0);}return d;}
 
-function chartOpts(isBar){
+function makeBarOpts(labelFn){
   return{
     responsive:true,maintainAspectRatio:false,
     plugins:{
       legend:{display:false},
-      datalabels:{display:true,color:'#1a1a18',font:{weight:'600',size:11},formatter:(v)=>v>0?(isBar?'R$'+Number(v).toFixed(0):v):'',anchor:isBar?'end':'center',align:isBar?'top':'center',offset:2,clamp:true},
-      tooltip:{callbacks:{label:ctx=>isBar?'Lucro: '+fmt(ctx.raw):ctx.raw+' un.'}}
+      datalabels:{display:true,color:'#333',font:{weight:'600',size:11},anchor:'end',align:'top',offset:2,clamp:true,formatter:labelFn},
+      tooltip:{display:false}
     },
     scales:{y:{display:false,beginAtZero:true},x:{grid:{display:false}}},
-    layout:{padding:{top:24}}
+    layout:{padding:{top:28}}
   };
 }
 
@@ -605,23 +601,19 @@ function renderRel(){
   filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr)byLuc[pr.name]=(byLuc[pr.name]||0)+(pr.price-pr.cost)*p.quantity;});
   const lucL=Object.keys(byLuc),lucD=lucL.map(k=>byLuc[k]);
   if(chartProd)chartProd.destroy();
-  const optLuc=chartOpts(true);optLuc.plugins.tooltip={callbacks:{label:ctx=>'Lucro: '+fmt(ctx.raw)}};
-  chartProd=new Chart(document.getElementById('c-prod'),{type:'bar',data:{labels:lucL.length?lucL:['Sem dados'],datasets:[{label:'Lucro',data:lucD.length?lucD:[0],backgroundColor:lucL.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:6,borderSkipped:false}]},options:optLuc});
+  chartProd=new Chart(document.getElementById('c-prod'),{type:'bar',data:{labels:lucL.length?lucL:['Sem dados'],datasets:[{data:lucD.length?lucD:[0],backgroundColor:lucL.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:6,borderSkipped:false}]},options:makeBarOpts(v=>v>0?'R$'+Number(v).toFixed(0):'')});
   const byQty={};
   filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr)byQty[pr.name]=(byQty[pr.name]||0)+p.quantity;});
-  const qtyEntries=Object.entries(byQty).sort((a,b)=>b[1]-a[1]);
-  const qtyL=qtyEntries.map(e=>e[0]),qtyD=qtyEntries.map(e=>e[1]);
+  const qtyE=Object.entries(byQty).sort((a,b)=>b[1]-a[1]);
+  const qtyL=qtyE.map(e=>e[0]),qtyD=qtyE.map(e=>e[1]);
   if(chartQty)chartQty.destroy();
-  const optQty=chartOpts(true);
-  optQty.plugins.datalabels.formatter=(v)=>v>0?v+' un.':'';
-  optQty.plugins.tooltip={callbacks:{label:ctx=>ctx.raw+' unidades'}};
-  chartQty=new Chart(document.getElementById('c-qty'),{type:'bar',data:{labels:qtyL.length?qtyL:['Sem dados'],datasets:[{label:'Qtd',data:qtyD.length?qtyD:[0],backgroundColor:qtyL.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:6,borderSkipped:false}]},options:optQty});
+  chartQty=new Chart(document.getElementById('c-qty'),{type:'bar',data:{labels:qtyL.length?qtyL:['Sem dados'],datasets:[{data:qtyD.length?qtyD:[0],backgroundColor:qtyL.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:6,borderSkipped:false}]},options:makeBarOpts(v=>v>0?v+' un.':'')});
   const tb={},labels=[];
   if(curPeriod==='day'){for(let h=0;h<24;h++){const k=h+'h';tb[k]=0;labels.push(k);}filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr){const k=new Date(p.created_at).getHours()+'h';tb[k]=(tb[k]||0)+(pr.price-pr.cost)*p.quantity;}});}
   else if(curPeriod==='week'){for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=d.toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit'});tb[k]=0;labels.push(k);}filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr){const k=new Date(p.created_at).toLocaleDateString('pt-BR',{weekday:'short',day:'2-digit'});tb[k]=(tb[k]||0)+(pr.price-pr.cost)*p.quantity;}});}
   else{for(let i=29;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);const k=d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});tb[k]=0;labels.push(k);}filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr){const k=new Date(p.created_at).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'});tb[k]=(tb[k]||0)+(pr.price-pr.cost)*p.quantity;}});}
   if(chartTime)chartTime.destroy();
-  chartTime=new Chart(document.getElementById('c-tempo'),{type:'line',data:{labels,datasets:[{label:'Lucro',data:labels.map(k=>tb[k]||0),borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.08)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#1D9E75'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:(ctx)=>ctx.dataset.data[ctx.dataIndex]>0,color:'#1D9E75',font:{weight:'600',size:10},formatter:(v)=>v>0?'R$'+Number(v).toFixed(0):'',anchor:'top',align:'top',offset:2},tooltip:{callbacks:{label:ctx=>'Lucro: '+fmt(ctx.raw)}}},scales:{y:{display:false,beginAtZero:true},x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:curPeriod==='day'?8:curPeriod==='week'?7:10,maxRotation:45}}},layout:{padding:{top:28}}}});
+  chartTime=new Chart(document.getElementById('c-tempo'),{type:'line',data:{labels,datasets:[{data:labels.map(k=>tb[k]||0),borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.08)',fill:true,tension:0.4,pointRadius:4,pointBackgroundColor:'#1D9E75'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},datalabels:{display:ctx=>ctx.dataset.data[ctx.dataIndex]>0,color:'#1D9E75',font:{weight:'600',size:10},formatter:v=>v>0?'R$'+Number(v).toFixed(0):'',anchor:'top',align:'top',offset:4},tooltip:{display:false}},scales:{y:{display:false,beginAtZero:true},x:{grid:{display:false},ticks:{autoSkip:true,maxTicksLimit:curPeriod==='day'?8:curPeriod==='week'?7:10,maxRotation:45}}},layout:{padding:{top:28}}}});
 }
 
 function setCaixaPeriod(p){curCaixaPeriod=p;['day','week','month'].forEach(x=>document.getElementById('cp-'+x).classList.remove('active'));document.getElementById('cp-'+p).classList.add('active');renderCaixa();}
