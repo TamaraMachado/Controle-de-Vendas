@@ -604,7 +604,6 @@ function renderRel(){
   const byLuc={};
   filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr)byLuc[pr.name]=(byLuc[pr.name]||0)+(pr.price-pr.cost)*p.quantity;});
   const lucL=Object.keys(byLuc),lucD=lucL.map(k=>byLuc[k]);
-  document.getElementById('leg-lucro').innerHTML=lucL.map((l,i)=>`<span class="legend-item"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>${l}</span>`).join('');
   if(chartProd)chartProd.destroy();
   const optLuc=chartOpts(true);optLuc.plugins.tooltip={callbacks:{label:ctx=>'Lucro: '+fmt(ctx.raw)}};
   chartProd=new Chart(document.getElementById('c-prod'),{type:'bar',data:{labels:lucL.length?lucL:['Sem dados'],datasets:[{label:'Lucro',data:lucD.length?lucD:[0],backgroundColor:lucL.map((_,i)=>COLORS[i%COLORS.length]),borderRadius:6,borderSkipped:false}]},options:optLuc});
@@ -612,7 +611,6 @@ function renderRel(){
   filtPurch.forEach(p=>{const pr=products.find(x=>x.id===p.product_id);if(pr)byQty[pr.name]=(byQty[pr.name]||0)+p.quantity;});
   const qtyEntries=Object.entries(byQty).sort((a,b)=>b[1]-a[1]);
   const qtyL=qtyEntries.map(e=>e[0]),qtyD=qtyEntries.map(e=>e[1]);
-  document.getElementById('leg-qty').innerHTML=qtyL.map((l,i)=>`<span class="legend-item"><span class="legend-dot" style="background:${COLORS[i%COLORS.length]}"></span>${l}</span>`).join('');
   if(chartQty)chartQty.destroy();
   const optQty=chartOpts(true);
   optQty.plugins.datalabels.formatter=(v)=>v>0?v+' un.':'';
